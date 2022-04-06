@@ -49,6 +49,7 @@ export default class ImageBuilder {
     }
 
     async execute() {
+        imagebuilderRunStatus = ""
         try {
             azPath = await io.which("az", true);
             core.debug("Az module path: " + azPath);
@@ -128,10 +129,16 @@ export default class ImageBuilder {
                 core.setOutput('templateName', this.templateName);
                 core.setOutput('templateId', templateID);
                 core.setOutput('run-output-name', runOutputName);
-                if (out) {
+                if ((out && this._taskParameters.actionRunMode === "full") || this._taskParameters.actionRunMode !== "full") {
                     core.setOutput('custom-image-uri', out);
-                    core.setOutput('imagebuilder-run-status', "succeeded");
-                    imagebuilderRunStatus = "succeeded";
+                    if(out){
+                        core.setOutput('imagebuilder-run-status', "succeeded");
+                        imagebuilderRunStatus = "succeeded";
+                    }
+                    else{
+                        core.setOutput('imagebuilder-run-status', "skipped");
+                        imagebuilderRunStatus = "skipped";
+                    }
                 }
             }
             else{
@@ -165,8 +172,8 @@ export default class ImageBuilder {
         finally {
             var outStream = await this.executeAzCliCommand(`group exists -n ${this._taskParameters.resourceGroupName}`);
             if (outStream) {
-                if (imagebuilderRunStatus != "failed" && (this._taskParameters.actionRunMode == "nowait" || this._taskParameters.actionRunMode == "buildonly")){
-                    console.log("skipping cleanup action run mode set to nowait or buildonly")
+                if (imagebuilderRunStatus != "failed" && (this._taskParameters.actionRunMode == "nowait" )){
+                    console.log("skipping cleanup action run mode set to nowait")
                     return
                 }
                 this.cleanup(subscriptionId);
@@ -390,12 +397,12 @@ export default class ImageBuilder {
 
     private async cleanup(subscriptionId: string) {
         try {
-            if (!this.isVhdDistribute && this.imgBuilderTemplateExists && this._taskParameters.actionRunMode == "full")) {
+            if (!this.isVhdDistribute && this.imgBuilderTemplateExists && this._taskParameters.actionRunMode == "full") {
                 await this._aibClient.deleteTemplate(this.templateName, subscriptionId);
                 console.log(`${this.templateName} got deleted`);
             }
 
-            if (storageAccountExists) {
+            if (storageAccountExists && this._taskParameters.actionRunMode != "nowait") {
                 let httpRequest: WebRequest = {
                     method: 'DELETE',
                     uri: this._client.getRequestUri(`subscriptions/{subscriptionId}/resourceGroups/{resourceGroupName}/providers/Microsoft.Storage/storageAccounts/{storageAccount}`, { '{subscriptionId}': subscriptionId, '{resourceGroupName}': this._taskParameters.resourceGroupName, '{storageAccount}': this.storageAccount }, [], "2019-06-01")
